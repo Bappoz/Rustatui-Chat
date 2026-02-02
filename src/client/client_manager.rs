@@ -38,4 +38,9 @@ impl ClientManager {
         let mut clients_write = self.clients.write().await;
         clients_write.remove(addr);
     }
+
+    pub async fn update_client_name(&self, addr: SocketAddr, new_name: String) {
+        let mut clients_write = self.clients.write().await;
+        clients_write.insert(addr, new_name);
+    }
 }
