@@ -88,7 +88,6 @@ impl CommandProcessor {
                     format!("✓ Your name is now: {}", new_name)
                 } else {
                     "✗ Name already taken".to_string()
-
                 }
             },
 
