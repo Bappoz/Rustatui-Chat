@@ -11,6 +11,7 @@ pub enum CommandResult {
     ListUsers,
     ListRooms,
     Whisper(String, String),            // Target name e message
+    LeaveToGeneral,
     Quit,
     Help,
     InvalidCommand(String),
@@ -88,6 +89,8 @@ impl CommandProcessor {
                 Some(CommandResult::Whisper(target, msg))
             },
 
+            "leave" | "back" => Some(CommandResult::LeaveToGeneral),
+
             "quit" | "exit" => Some(CommandResult::Quit),
 
             "help" | "?" => Some(CommandResult::Help),
@@ -122,26 +125,50 @@ impl CommandProcessor {
                     room_manager.leave_room(curr, &addr).await;
                 }
                 match room_manager.join_room(&room, addr, password.as_deref()).await {
-                    Ok(_) => Ok(None),
-                    Err(e) => Err(e),
+                    Ok(_) => Err(format!("✓ Joined room: {}", room)),
+                    Err(e) => Err(format!("✗ {}", e)),
                 }
             }
 
             CommandResult::CreateRoom(room_name, password) => {
                 match room_manager.create_room(room_name.clone(), password.clone(), addr).await {
                     Ok(_) => {
-                        // Automatically enters created room
-                        let _ = room_manager.join_room(&room_name, addr, password.as_deref()).await;
-                        let msg = if password.is_some() {
-                            format!("✓ Room '{}' created (password protected) and joined", room_name)
-                        } else {
-                            format!("✓ Room '{}' created and joined", room_name)
-                        };
-                        Err(msg)
+                        // Leaves room first
+                        if let Some(curr_room) = room_manager.get_user_room(&addr).await {
+                            room_manager.leave_room(&curr_room, &addr).await;
+                        }
+
+                        // Enters automatically in the room
+                        match room_manager.join_room(&room_name, addr, password.as_deref()).await {
+                            Ok(_) => {
+                                let msg = if password.is_some() {
+                                    format!("✓ Room '{}' created (password protected) and joined", room_name)
+                                } else {
+                                    format!("✓ Room '{}' created and joined", room_name)
+                                };
+                                Err(msg)
+                            },
+                            Err(e) => Err(format!("✗ Room created but failed to join: {}", e))
+                        }
                     }
                     Err(e) => Err(format!("x {}", e))
                 }
             },
+
+            CommandResult::LeaveToGeneral => {
+                if let Some(curr_room) = room_manager.get_user_room(&addr).await {
+                    if curr_room == "general" {
+                        return Err("You are already in 'general' room".to_string());
+                    }
+                    room_manager.leave_room(&curr_room, &addr).await;
+                    match room_manager.join_room("general", addr, None).await {
+                        Ok(_) => Err("✓ Returned to 'general' room".to_string()),
+                        Err(e) => Err(format!("✗ Error returning to general: {}", e)),
+                    }
+                } else {
+                    Err("✗ You are not in any room".to_string())
+                }
+            }
 
             CommandResult::InviteUser(username, room_name) => {
                 let room_info = room_manager.get_room_info(&room_name).await;
@@ -233,6 +260,7 @@ impl CommandProcessor {
                     /nick <name>            - Change your nickname\n\
                     /create <room> [pwd]    - Create a new room\n\
                     /join <room> [pwd]      - Join a room\n\
+                    /leave or /back         - Return to general room\n\
                     /invite <user> <room>   - Invite user to your room\n\
                     /list                   - List users in current room\n\
                     /rooms                  - List all rooms\n\

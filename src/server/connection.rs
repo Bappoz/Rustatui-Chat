@@ -10,6 +10,7 @@ use crate::message::chat_message::MessageType;
 use crate::message::command_processor::{CommandProcessor, CommandResult};
 use crate::server::room_manager::RoomManager;
 use crate::utils::color::Colors;
+use crate::utils::formatter::Formatter;
 
 struct MessageLoopContext {
     client_manager: ClientManager,
@@ -95,6 +96,8 @@ impl ClientConnection {
         writer: &mut tokio::net::tcp::WriteHalf<'_>,
         input: &mut String,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        const TERMINAL_WIDTH: usize = 80;
+
         loop {
             select! {
                 result = buf_reader.read_line(input) => {
@@ -104,6 +107,8 @@ impl ClientConnection {
                             let message = input.trim().to_string();
                             if !message.is_empty() {
                                 if let Some(cmd_result) = CommandProcessor::parse(&message) {
+                                    writer.write_all(b"\x1b[1A\x1b[2K").await?; // Move cursor up + limpa linha
+
                                     let is_quit = matches!(cmd_result, CommandResult::Quit);
 
                                     match CommandProcessor::execute(
@@ -113,7 +118,6 @@ impl ClientConnection {
                                         &ctx.room_manager,
                                     ).await {
                                         Ok(Some(whisper_msg)) => {
-                                            // Envia whisper
                                             let _ = ctx.message_sender.send(whisper_msg);
                                             let success = Colors::colorize("✓ Whisper sent", Colors::SUCCESS);
                                             writer.write_all(format!("{}\n", success).as_bytes()).await?;
@@ -126,8 +130,14 @@ impl ClientConnection {
                                         }
                                         Err(msg) => {
                                             // Error/info message
-                                            let color = if msg.starts_with("Available") || msg.starts_with("Users") {
+                                            let color = if msg.starts_with("✓") {
+                                                Colors::SUCCESS
+                                            } else if msg.starts_with("Available") || msg.starts_with("Users") {
                                                 Colors::INFO
+                                            } else if msg.contains("joined") || msg.contains("created") || msg.contains("Returned"){
+                                                Colors::SUCCESS
+                                            } else if msg.starts_with("═══") {
+                                                Colors::BRIGHT_YELLOW
                                             } else {
                                                 Colors::ERROR
                                             };
@@ -140,9 +150,17 @@ impl ClientConnection {
                                         break;
                                     }
                                 } else {
+                                    // Clean de telnet input
+                                    writer.write_all(b"\x1b[1A\x1b[2K").await?;
+
                                     // Normal message
                                     if let Some(sender_name) = ctx.client_manager.get_clients_name(&ctx.addr).await {
                                         if let Some(room) = ctx.room_manager.get_user_room(&ctx.addr).await {
+                                            let own_msg = Formatter::format_own_message(&message, TERMINAL_WIDTH);
+                                            let colored_own = Colors::colorize(&own_msg, Colors::BRIGHT_CYAN);
+                                            writer.write_all(format!("{}\n", colored_own).as_bytes()).await?;
+
+                                            // Message to others
                                             let chat_msg = ChatMessage::new(
                                                 message,
                                                 ctx.addr,

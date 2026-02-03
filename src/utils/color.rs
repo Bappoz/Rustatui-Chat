@@ -21,7 +21,7 @@ impl Colors {
     pub const BRIGHT_MAGENTA: &'static str = "\x1b[95m";
     pub const BRIGHT_CYAN: &'static str = "\x1b[96m";
 
-    // Especific color for ocassions
+    // Specific color for occasions
     pub const SYSTEM: &'static str = "\x1b[93m"; // Amarelo brilhante
     pub const WHISPER: &'static str = "\x1b[95m"; // Magenta brilhante
     pub const ERROR: &'static str = "\x1b[91m"; // Vermelho brilhante
