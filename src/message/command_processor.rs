@@ -1,6 +1,7 @@
 use crate::server::room_manager::RoomManager;
 use crate::client::client_manager::ClientManager;
 use std::net::SocketAddr;
+use crate::message::chat_message::ChatMessage;
 
 pub enum CommandResult {
     ChangeNick(String),
@@ -80,14 +81,14 @@ impl CommandProcessor {
         addr: SocketAddr,
         client_manager: &ClientManager,
         room_manager: &RoomManager
-    ) -> String {
+    ) -> Result<Option<ChatMessage>, String> {
         match result {
             CommandResult::ChangeNick(new_name) => {
                 if client_manager.is_name_available(&new_name).await {
                     client_manager.update_client_name(addr, new_name.clone()).await;
-                    format!("✓ Your name is now: {}", new_name)
+                    Ok(None)
                 } else {
-                    "✗ Name already taken".to_string()
+                    Err("✗ Name already taken".to_string())
                 }
             },
 
@@ -97,8 +98,8 @@ impl CommandProcessor {
                     room_manager.leave_room(curr, &addr).await;
                 }
                 match room_manager.join_room(&room, addr, password.as_deref()).await {
-                    Ok(_) => format!("✓ Joined room: {}", room),
-                    Err(e) => format!("✗ {}", e),
+                    Ok(_) => Ok(None),
+                    Err(e) => Err(e),
                 }
             }
 
@@ -112,9 +113,9 @@ impl CommandProcessor {
                             users.push(name);
                         }
                     }
-                    format!("Users in {}: {}", room_name, users.join(", "))
+                    Err(format!("Users in {}: {}", room_name, users.join(", ")))
                 } else {
-                    "✗ You are not in a room".to_string()
+                    Err("You are not in a room".to_string())
                 }
             },
 
@@ -126,32 +127,40 @@ impl CommandProcessor {
                     let lock = if protected {"🔒"} else { "" };
                     output.push_str(&format!("  {} {} ({} users)\n", lock, name, count));
                 }
-                output
+                Err(output)
             },
 
-            CommandResult::Whisper(_, _) => {
-                "Whisper feature coming soon!".to_string()
+            CommandResult::Whisper(target_name, message) => {
+                // Search user by name
+                if let Some(target_addr) = client_manager.get_client_by_name(&target_name).await {
+                    if let Some(sender_name) = client_manager.get_clients_name(&addr).await {
+                        let whisper_msg = ChatMessage::whisper(
+                            message,
+                            addr,
+                            sender_name,
+                            target_addr,
+                        );
+                        return Ok(Some(whisper_msg));
+                    }
+                }
+                return Err(format!("User '{}' not found", target_name));
             },
 
-            CommandResult::Quit => "Goodbye!".to_string(),
+            CommandResult::Quit => Ok(None),
 
-            CommandResult::Help => {
+            CommandResult::Help => Err(
                 String::from(
-                    "Available commands:\n\
-                    /nick <name>        - Change your nickname\n\
-                    /join <room> [pwd]  - Join a room\n\
-                    /list               - List users in current room\n\
-                    /rooms              - List all rooms\n\
+                    "\n\nAvailable commands:\n\
+                    /nick <name>          - Change your nickname\n\
+                    /join <room> [pwd]    - Join a room\n\
+                    /list                 - List users in current room\n\
+                    /rooms                - List all rooms\n\
                     /whisper <user> <msg> - Send private message\n\
-                    /help               - Show this help\n\
-                    /quit               - Exit chat"
-                )
-            },
+                    /help                 - Show this help\n\
+                    /quit                 - Exit chat\n\n "
+                )),
 
-            CommandResult::InvalidCommand(msg) => {
-                format!("✗ {}", msg)
-            },
-
+            CommandResult::InvalidCommand(msg) => Err(msg),
         }
     }
 }

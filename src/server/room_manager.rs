@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use clap::builder::Str;
 use tokio::sync::RwLock;
 use crate::server::room::Room;
 
@@ -54,7 +53,7 @@ impl RoomManager {
         if room.is_password_protected() {
             match password {
                 Some(pwd) if room.verify_password(pwd) => {},
-                Some(_) => return Err("Incorret password!".to_string()),
+                Some(_) => return Err("Incorrect password!".to_string()),
                 None => return Err("Room requires a password!".to_string()),
             }
         }

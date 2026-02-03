@@ -7,8 +7,9 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use crate::client::client_manager::ClientManager;
 use crate::message::chat_message::ChatMessage;
 use crate::message::chat_message::MessageType;
-use crate::message::command_processor::CommandProcessor;
+use crate::message::command_processor::{CommandProcessor, CommandResult};
 use crate::server::room_manager::RoomManager;
+use crate::utils::color::Colors;
 
 struct MessageLoopContext {
     client_manager: ClientManager,
@@ -82,7 +83,7 @@ impl ClientConnection {
 
                 break;
             }
-            writer.write_all(b"The name is taken. Choose another name.").await?;
+            writer.write_all(b"The name is taken. Choose another name.\n").await?;
         }
         Ok(())
     }
@@ -103,23 +104,47 @@ impl ClientConnection {
                             let message = input.trim().to_string();
                             if !message.is_empty() {
                                 if let Some(cmd_result) = CommandProcessor::parse(&message) {
-                                    let response = CommandProcessor::execute(
+                                    let is_quit = matches!(cmd_result, CommandResult::Quit);
+
+                                    match CommandProcessor::execute(
                                         cmd_result,
                                         ctx.addr,
                                         &ctx.client_manager,
                                         &ctx.room_manager,
-                                    ).await;
+                                    ).await {
+                                        Ok(Some(whisper_msg)) => {
+                                            // Envia whisper
+                                            let _ = ctx.message_sender.send(whisper_msg);
+                                            let success = Colors::colorize("✓ Whisper sent", Colors::SUCCESS);
+                                            writer.write_all(format!("{}\n", success).as_bytes()).await?;
+                                        }
+                                        Ok(None) => {
+                                            if !is_quit {
+                                                let success = Colors::colorize("✓ Command executed", Colors::SUCCESS);
+                                                writer.write_all(format!("{}\n", success).as_bytes()).await?;
+                                            }
+                                        }
+                                        Err(msg) => {
+                                            // Error/info message
+                                            let color = if msg.starts_with("Available") || msg.starts_with("Users") {
+                                                Colors::INFO
+                                            } else {
+                                                Colors::ERROR
+                                            };
+                                            let colored_msg = Colors::colorize(&msg, color);
+                                            writer.write_all(format!("{}\n", colored_msg).as_bytes()).await?;
+                                        }
+                                    }
 
-                                    writer.write_all(format!("{}\n", response).as_bytes()).await?;
-
-                                    if message.starts_with("/quit") || message.starts_with("/exit") {
+                                    if is_quit {
                                         break;
                                     }
                                 } else {
+                                    // Normal message
                                     if let Some(sender_name) = ctx.client_manager.get_clients_name(&ctx.addr).await {
                                         if let Some(room) = ctx.room_manager.get_user_room(&ctx.addr).await {
                                             let chat_msg = ChatMessage::new(
-                                                message.clone(),
+                                                message,
                                                 ctx.addr,
                                                 sender_name,
                                                 room,
@@ -139,34 +164,42 @@ impl ClientConnection {
                     }
                 },
                 Ok(chat_msg) = message_receiver.recv() => {
-                    // Only receives message from the same room
-                    if let Some(my_room) = ctx.room_manager.get_user_room(&ctx.addr).await {
-                        if chat_msg.room == my_room && chat_msg.sender_addr != ctx.addr {
-                            match chat_msg.message_type {
-                                MessageType::Chat => {
-                                    let formatted = format!("{}: {}\n", chat_msg.sender_name, chat_msg.content);
-                                    writer.write_all(formatted.as_bytes()).await?;
-                                },
-                                MessageType::System => {
-                                    let formatted = format!("[SYSTEM] {}\n", chat_msg.content);
-                                    writer.write_all(formatted.as_bytes()).await?;
-                                },
-                                MessageType::Whisper => {
-                                    if let Some(target) = chat_msg.target {
-                                        if target == ctx.addr {
-                                            let formatted = format!("[Whisper from {}] {}\n",
-                                                chat_msg.sender_name, chat_msg.content);
-                                            writer.write_all(formatted.as_bytes()).await?;
-                                        }
-                                    }
+                    match chat_msg.message_type {
+                        MessageType::Whisper => {
+                            // Verify the receiver
+                            if let Some(target) = chat_msg.target {
+                                if target == ctx.addr {
+                                    let whisper_text = format!("[Whisper from {}] {}",
+                                        chat_msg.sender_name, chat_msg.content);
+                                    let colored = Colors::colorize(&whisper_text, Colors::WHISPER);
+                                    writer.write_all(format!("{}\n", colored).as_bytes()).await?;
                                 }
-                                _ => {}
                             }
                         }
+                        MessageType::System => {
+                            let system_text = format!("[SYSTEM] {}", chat_msg.content);
+                            let colored = Colors::colorize(&system_text, Colors::SYSTEM);
+                            writer.write_all(format!("{}\n", colored).as_bytes()).await?;
+                        }
+                        MessageType::Chat => {
+                            // Only receives from the same room
+                            if let Some(my_room) = ctx.room_manager.get_user_room(&ctx.addr).await {
+                                if chat_msg.room == my_room && chat_msg.sender_addr != ctx.addr {
+                                    // Get users color
+                                    if let Some(client_info) = ctx.client_manager.get_client_info(&chat_msg.sender_addr).await {
+                                        let user_color = Colors::get_color_by_index(client_info.color_index);
+                                        let colored_name = Colors::colorize(&chat_msg.sender_name, user_color);
+                                        let fmt_msg = format!("{}: {}\n", colored_name, chat_msg.content);
+                                        writer.write_all(fmt_msg.as_bytes()).await?;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
-        }  
+        }
         Ok(())
     }
 

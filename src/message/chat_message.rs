@@ -1,6 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
-use std::os::windows::io::AsRawSocket;
-use clap::builder::styling::Color;
+use std::net::{IpAddr, SocketAddr, Ipv4Addr};
 
 #[derive(Clone, Debug)]
 pub enum MessageType {
@@ -40,7 +38,6 @@ impl ChatMessage {
     }
 
     pub fn system(content: String, room: String) -> Self {
-        use std::net::{IpAddr, Ipv4Addr};
         Self {
             content,
             sender_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), 0),
