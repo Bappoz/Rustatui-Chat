@@ -4,16 +4,18 @@ use std::net::SocketAddr;
 pub struct Room {
     pub name: String,
     pub password: Option<String>,
-    pub members: Vec<SocketAddr>
+    pub members: Vec<SocketAddr>,
+    pub owner: SocketAddr,
 }
 
 
 impl Room {
-    pub fn new(name: String, password: Option<String>) -> Self {
+    pub fn new(name: String, password: Option<String>, owner: SocketAddr) -> Self {
         Self {
             name,
             password,
             members: Vec::new(),
+            owner,
         }
     }
 

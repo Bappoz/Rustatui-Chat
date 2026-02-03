@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::server::room::Room;
@@ -15,9 +15,11 @@ pub struct RoomManager {
 impl RoomManager {
     pub fn new() -> Self {
         let mut rooms = HashMap::new();
+        let system_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+
         rooms.insert(
             "general".to_string(),
-            Room::new("general".to_string(), None)
+            Room::new("general".to_string(), None, system_addr)
         );
 
         Self {
@@ -28,14 +30,15 @@ impl RoomManager {
     pub async fn create_room(
         &self,
         name: String,
-        password: Option<String>
+        password: Option<String>,
+        owner: SocketAddr,
     ) -> Result<(), String> {
         let mut rooms = self.rooms.write().await;
 
         if rooms.contains_key(&name) {
             return Err(format!("Room '{}' already exists", name));
         }
-        rooms.insert(name.clone(), Room::new(name, password));
+        rooms.insert(name.clone(), Room::new(name, password, owner));
         Ok(())
     }
 
@@ -95,5 +98,10 @@ impl RoomManager {
             }
         }
         None
+    }
+
+    pub async fn get_room_info(&self, room_name: &str) -> Option<(SocketAddr, Option<String>)> {
+        let rooms = self.rooms.read().await;
+        rooms.get(room_name).map(|room| (room.owner, room.password.clone()))
     }
 }

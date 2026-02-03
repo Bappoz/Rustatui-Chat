@@ -6,6 +6,8 @@ use crate::message::chat_message::ChatMessage;
 pub enum CommandResult {
     ChangeNick(String),
     JoinRoom(String, Option<String>),
+    CreateRoom(String, Option<String>),
+    InviteUser(String, String),
     ListUsers,
     ListRooms,
     Whisper(String, String),            // Target name e message
@@ -48,6 +50,28 @@ impl CommandProcessor {
                 let password = parts.get(2).map(|s| s.to_string());
                 Some(CommandResult::JoinRoom(room, password))
             },
+
+            "create" => {
+                if parts.len() < 2 {
+                    return Some(CommandResult::InvalidCommand(
+                        "Usage: /create <room_name> [password]".to_string()
+                    ));
+                }
+                let room_name = parts[1].to_string();
+                let password = parts.get(2).map(|s| s.to_string());
+                Some(CommandResult::CreateRoom(room_name, password))
+            },
+
+            "invite" => {
+                if parts.len() < 2 {
+                    return Some(CommandResult::InvalidCommand(
+                        "Usage: /invite <username> <room_name>".to_string()
+                    ));
+                }
+                let username = parts[1].to_string();
+                let room_name = parts[2].to_string();
+                Some(CommandResult::InviteUser(username, room_name))
+            }
 
             "list" => Some(CommandResult::ListUsers),
 
@@ -103,6 +127,61 @@ impl CommandProcessor {
                 }
             }
 
+            CommandResult::CreateRoom(room_name, password) => {
+                match room_manager.create_room(room_name.clone(), password.clone(), addr).await {
+                    Ok(_) => {
+                        // Automatically enters created room
+                        let _ = room_manager.join_room(&room_name, addr, password.as_deref()).await;
+                        let msg = if password.is_some() {
+                            format!("✓ Room '{}' created (password protected) and joined", room_name)
+                        } else {
+                            format!("✓ Room '{}' created and joined", room_name)
+                        };
+                        Err(msg)
+                    }
+                    Err(e) => Err(format!("x {}", e))
+                }
+            },
+
+            CommandResult::InviteUser(username, room_name) => {
+                let room_info = room_manager.get_room_info(&room_name).await;
+                if room_info.is_none() {
+                    return Err(format!("✗ Room '{}' does not exist", room_name));
+                }
+
+                let (owner_addr, password) = room_info.unwrap();
+                // Verify if is the owner who is inviting
+                if owner_addr != addr {
+                    return Err("✗ Only the owner of this room can invite users".to_string());
+                }
+
+                // Search the user
+                if let Some(target_addr) = client_manager.get_client_by_name(&username).await {
+                    if let Some(sender_name) = client_manager.get_clients_name(&addr).await {
+                        let invite_msg = if let Some(pwd) = password {
+                            format!(
+                                "\n📨 {} invited you to join room '{}'. Password: {}\nUse: /join {} {}\n",
+                                sender_name, room_name, pwd, room_name, pwd
+                            )
+                        } else {
+                            format!(
+                                "📨 {} invited you to join room '{}'\nUse: /join {}",
+                                sender_name, room_name, room_name
+                            )
+                        };
+
+                        let whisper_msg = ChatMessage::whisper(
+                            invite_msg,
+                            addr,
+                            sender_name,
+                            target_addr,
+                        );
+                        return Ok(Some(whisper_msg));
+                    }
+                }
+                Err(format!("✗ User '{}' not found", username))
+            }
+
             CommandResult::ListUsers => {
                 if let Some(room_name) = room_manager.get_user_room(&addr).await {
                     let members = room_manager.get_room_members(&room_name).await;
@@ -150,17 +229,20 @@ impl CommandProcessor {
 
             CommandResult::Help => Err(
                 String::from(
-                    "\n\nAvailable commands:\n\
-                    /nick <name>          - Change your nickname\n\
-                    /join <room> [pwd]    - Join a room\n\
-                    /list                 - List users in current room\n\
-                    /rooms                - List all rooms\n\
-                    /whisper <user> <msg> - Send private message\n\
-                    /help                 - Show this help\n\
-                    /quit                 - Exit chat\n\n "
+                    "\n\n═══════════════ Available Commands ═══════════════\n\
+                    /nick <name>            - Change your nickname\n\
+                    /create <room> [pwd]    - Create a new room\n\
+                    /join <room> [pwd]      - Join a room\n\
+                    /invite <user> <room>   - Invite user to your room\n\
+                    /list                   - List users in current room\n\
+                    /rooms                  - List all rooms\n\
+                    /w <user> <msg>         - Send private message\n\
+                    /help                   - Show this help\n\
+                    /quit                   - Exit chat\n\
+                    ═══════════════════════════════════════════════════\n\n"
                 )),
 
-            CommandResult::InvalidCommand(msg) => Err(msg),
+            CommandResult::InvalidCommand(msg) => Err(format!("✗ {}",msg)),
         }
     }
 }
