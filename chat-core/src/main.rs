@@ -1,5 +1,5 @@
-use chat_server::config::ServerConfig;
-use chat_server::server::server::ChatServer;
+use chat_core::server::server_config::ServerConfig;
+use chat_core::server::server::ChatServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -8,3 +8,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     server.run().await
 }
+

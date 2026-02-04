@@ -3,7 +3,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 use crate::client::client_manager::ClientManager;
-use crate::config::ServerConfig;
+use crate::server::server_config::ServerConfig;
 use crate::message::chat_message::ChatMessage;
 use crate::server::connection::ClientConnection;
 use crate::server::room_manager::RoomManager;
