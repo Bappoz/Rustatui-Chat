@@ -1,210 +1,166 @@
+use std::io;
+use std::time::Duration;
 
-
-use color_eyre::Result;
-use ratatui::{
-    buffer::Buffer,
-    crossterm::event::{self, Event, KeyCode, KeyEventKind},
-    layout::{Constraint, Layout, Rect},
-    style::{palette::tailwind, Color, Stylize},
-    symbols,
-    text::Line,
-    widgets::{Block, Padding, Paragraph, Tabs, Widget},
-    DefaultTerminal,
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
+use ratatui::{
+    backend::CrosstermBackend,
+    Terminal,
+};
+use chat_tui::state::state::AppState;
+use chat_tui::view::view::View;
+use chat_tui::event::event_handler::{EventHandler, Event};
+use chat_tui::input::input_handler::InputHandler;
+use chat_tui::state::state::{AppPage, InputMode, FocusedField};
+use chat_tui::state::action::Action;
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
-    let terminal = ratatui::init();
-    let app_result = App::default().run(terminal);
-    ratatui::restore();
-    app_result
-}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Setup terminal
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
 
-#[derive(Default)]
-struct App {
-    state: AppState,
-    selected_tab: SelectedTab,
-}
+    // Create App state
+    let mut app_state = AppState::new();
 
+    // create the event handle (captures the binds)
+    let event_handler = EventHandler::new(Duration::from_millis(250));
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
-enum AppState {
-    #[default]
-    Running,
-    Quitting,
-}
+    // main loop
+    let result = run_app(&mut terminal, &mut app_state, event_handler);
 
-#[derive(Default, Clone, Copy, Display, FromRepr, EnumIter)]
-enum SelectedTab {
-    #[default]
-    #[strum(to_string = "General Chat")]
-    Tab1,
-    #[strum(to_string = "Tab 2")]
-    Tab2,
-    #[strum(to_string = "Tab 3")]
-    Tab3,
-    #[strum(to_string = "Tab 4")]
-    Tab4,
-}
+    // restore terminal
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
 
-
-impl App {
-    fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        while self.state == AppState::Running {
-            terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
-            self.handle_events()?;
-        }
-        Ok(())
+    if let Err(err) = result {
+        println!("Error: {:?}", err);
     }
 
-    fn handle_events(&mut self) -> std::io::Result<()> {
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                match key.code {
-                    KeyCode::BackTab => self.previous_tab(),
-                    KeyCode::Tab => self.next_tab(),
-                    KeyCode::Char('q') | KeyCode::Esc => self.quit(),
-                    _ => {}
+    Ok(())
+}
+
+fn run_app<B: ratatui::backend::Backend>(
+    terminal: &mut Terminal<B>,
+    state: &mut AppState,
+    event_handler: EventHandler,
+) -> Result<(), Box<dyn std::error::Error>>
+    where
+        B::Error: 'static,
+{
+    loop {
+        // Render the UI
+        terminal.draw(|frame| {
+            View::render(state, frame);
+        })?;
+
+        // Capture the events
+        match event_handler.next()? {
+            Event::Key(key) => {
+                // Translate keybind action
+                if let Some(action) = InputHandler::handle_key(
+                    key,
+                    &state.current_page,
+                    &state.input_mode,
+                    &state.focused_field,
+                ) {
+                    handle_action(state, action);
+
+                    if state.should_quit {
+                        break;
+                    }
                 }
             }
-        }
-        Ok(())
-    }
-
-    pub fn next_tab(&mut self) {
-        self.selected_tab = self.selected_tab.next();
-    }
-
-    pub fn previous_tab(&mut self) {
-        self.selected_tab = self.selected_tab.previous();
-    }
-
-    pub fn quit(&mut self) {
-        self.state = AppState::Quitting;
-    }
-}
-
-impl SelectedTab {
-    /// Get the previous tab, if there is no previous tab return the current tab.
-    fn previous(self) -> Self {
-        let current_index = self as usize;
-        if current_index == 0 {
-            let last_index = Self::iter().count() - 1;
-            Self::from_repr(last_index).unwrap()
-        } else {
-            Self::from_repr(current_index - 1).unwrap()
+            Event::Tick => {
+                // Atualização periódica (se necessário)
+            }
+            Event::Render => {
+                // Força re-renderização
+            }
         }
     }
 
-
-    /// Get the next tab, if there is no next tab return the current tab.
-    fn next(self) -> Self {
-        let current_index = self as usize;
-        let next_index = current_index.saturating_add(1);
-        Self::from_repr(next_index).unwrap_or(Self::Tab1)
-    }
+    Ok(())
 }
 
-impl Widget for &App {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        use Constraint::{Length, Min};
-        let vertical = Layout::vertical([Length(1), Min(0), Length(1)]);
-        let [header_area, inner_area, footer_area] = vertical.areas(area);
-
-        let horizontal = Layout::horizontal([Min(0), Length(20)]);
-        let [tabs_area, title_area] = horizontal.areas(header_area);
-
-        render_title(title_area, buf);
-        self.render_tabs(tabs_area, buf);
-        self.selected_tab.render(inner_area, buf);
-        render_footer(footer_area, buf);
-    }
-}
-
-impl App {
-    fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
-        let titles = SelectedTab::iter().map(SelectedTab::title);
-        let highlight_style = (Color::default(), self.selected_tab.palette().c700);
-        let selected_tab_index = self.selected_tab as usize;
-        Tabs::new(titles)
-            .highlight_style(highlight_style)
-            .select(selected_tab_index)
-            .padding("", "")
-            .divider(" ")
-            .render(area, buf);
-    }
-}
-
-fn render_title(area: Rect, buf: &mut Buffer) {
-    "RustyChat".bold().render(area, buf);
-}
-
-fn render_footer(area: Rect, buf: &mut Buffer) {
-    Line::raw("Press tab to change room | Press q to quit")
-        .centered()
-        .render(area, buf);
-}
-
-impl Widget for SelectedTab {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        // in a real app these might be separate widgets
-        match self {
-            Self::Tab1 => self.render_tab0(area, buf),
-            Self::Tab2 => self.render_tab1(area, buf),
-            Self::Tab3 => self.render_tab2(area, buf),
-            Self::Tab4 => self.render_tab3(area, buf),
+fn handle_action(state: &mut AppState, action: Action) {
+    match action {
+        Action::Quit => {
+            state.should_quit = true;
         }
+        Action::SwitchToConnectionPage => {
+            state.current_page = AppPage::Connection;
+        }
+        Action::SwitchToChatPage => {
+            state.current_page = AppPage::Chat;
+        }
+        Action::UpdateServerAddress(input) => {
+            handle_text_input(&mut state.server_address, &input);
+        }
+        Action::UpdateUsername(input) => {
+            handle_text_input(&mut state.username, &input);
+        }
+        Action::UpdateMessageInput(input) => {
+            handle_text_input(&mut state.message_input, &input);
+        }
+        Action::Connect => {
+            // TODO: Implement connection
+            state.current_page = AppPage::Chat;
+        }
+        Action::SendMessage => {
+            if state.can_send_message() {
+                // TODO: send message
+                state.clear_input();
+            }
+        }
+        Action::ToggleInputMode => {
+            state.input_mode = match state.input_mode {
+                InputMode::Normal => InputMode::Editing,
+                InputMode::Editing => InputMode::Normal,
+            };
+        }
+        Action::FocusNext => {
+            state.focused_field = match state.current_page {
+                AppPage::Connection => match state.focused_field {
+                    FocusedField::ServerAddress => FocusedField::Username,
+                    FocusedField::Username => FocusedField::ConnectButton,
+                    FocusedField::ConnectButton => FocusedField::ServerAddress,
+                    _ => FocusedField::ServerAddress,
+                },
+                AppPage::Chat => FocusedField::MessageInput,
+            };
+        }
+        Action::FocusPrevious => {
+            state.focused_field = match state.current_page {
+                AppPage::Connection => match state.focused_field {
+                    FocusedField::ServerAddress => FocusedField::ConnectButton,
+                    FocusedField::Username => FocusedField::ServerAddress,
+                    FocusedField::ConnectButton => FocusedField::Username,
+                    _ => FocusedField::ConnectButton,
+                },
+                AppPage::Chat => FocusedField::MessageInput,
+            };
+        }
+        _ => {}
     }
 }
 
-impl SelectedTab {
-    /// Return tab's name as a styled `Line`
-    fn title(self) -> Line<'static> {
-        format!("  {self}  ")
-            .fg(tailwind::SLATE.c200)
-            .bg(self.palette().c900)
-            .into()
-    }
-
-    fn render_tab0(self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new("Hello, World!")
-            .block(self.block())
-            .render(area, buf);
-    }
-
-    fn render_tab1(self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new("Welcome to the Ratatui tabs example!")
-            .block(self.block())
-            .render(area, buf);
-    }
-
-    fn render_tab2(self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new("Look! I'm different than others!")
-            .block(self.block())
-            .render(area, buf);
-    }
-
-    fn render_tab3(self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new("I know, these are some basic changes. But I think you got the main idea.")
-            .block(self.block())
-            .render(area, buf);
-    }
-
-    /// A block surrounding the tab's content
-    fn block(self) -> Block<'static> {
-        Block::bordered()
-            .border_set(symbols::border::PROPORTIONAL_TALL)
-            .padding(Padding::horizontal(1))
-            .border_style(self.palette().c700)
-    }
-
-    const fn palette(self) -> tailwind::Palette {
-        match self {
-            Self::Tab1 => tailwind::BLUE,
-            Self::Tab2 => tailwind::EMERALD,
-            Self::Tab3 => tailwind::INDIGO,
-            Self::Tab4 => tailwind::RED,
-        }
+fn handle_text_input(field: &mut String, input: &str) {
+    if input == "\x08" {
+        // Backspace
+        field.pop();
+    } else {
+        // Adiciona caractere
+        field.push_str(input);
     }
 }

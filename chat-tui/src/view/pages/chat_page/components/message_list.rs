@@ -7,13 +7,13 @@ use ratatui::{
 };
 use chat_core::message::chat_message::ChatMessage;
 
-pub struct MessageList<'a> {
+pub struct MsgList<'a> {
     messages: &'a [ChatMessage],
     current_username: &'a str,
     scroll_offset: usize,
 }
 
-impl<'a> MessageList<'a> {
+impl<'a> MsgList<'a> {
     pub fn new(
         messages: &'a [ChatMessage],
         current_username: &'a str,
@@ -60,7 +60,7 @@ impl<'a> MessageList<'a> {
     }
 }
 
-impl<'a> Widget for MessageList<'a> {
+impl<'a> Widget for MsgList<'a> {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,

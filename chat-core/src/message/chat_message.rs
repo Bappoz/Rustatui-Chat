@@ -1,4 +1,5 @@
 use std::net::{IpAddr, SocketAddr, Ipv4Addr};
+use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
 pub enum MessageType {
@@ -17,6 +18,7 @@ pub struct ChatMessage {
     pub message_type: MessageType,
     pub target: Option<SocketAddr>,
     pub color: String,
+    pub timestamp: DateTime<Utc>,
 }
 
 impl ChatMessage {
@@ -34,6 +36,7 @@ impl ChatMessage {
             message_type: MessageType::Chat,
             target: None,
             color: "white".to_string(),
+            timestamp: Utc::now()
         }
     }
 
@@ -46,6 +49,7 @@ impl ChatMessage {
             message_type: MessageType::System,
             target: None,
             color: "yellow".to_string(),
+            timestamp: Utc::now(),
         }
     }
 
@@ -62,7 +66,8 @@ impl ChatMessage {
             room: String::new(),
             message_type: MessageType::Whisper,
             target: Some(target),
-            color: "magenta".to_string()
+            color: "magenta".to_string(),
+            timestamp: Utc::now(),
         }
     }
 
