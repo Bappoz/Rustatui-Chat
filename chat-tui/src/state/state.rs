@@ -1,5 +1,6 @@
 use chat_core::message::chat_message::ChatMessage;
-
+use crate::client::tui_client;
+use crate::client::tui_client::TuiClient;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppPage {
@@ -48,6 +49,8 @@ pub struct AppState {
     pub users_in_room: Vec<String>,
 
     pub focused_field: FocusedField,
+
+    pub client: Option<TuiClient>
 }
 
 impl Default for AppState {
@@ -68,8 +71,9 @@ impl Default for AppState {
                 "tech".to_string(),
             ],
             current_room: Some("general".to_string()),
-            users_in_room: vec!["alice".to_string(), "bob".to_string()],
+            users_in_room: vec![],
             focused_field: FocusedField::ServerAddress,
+            client: None,
         }
     }
 }
@@ -89,7 +93,8 @@ impl AppState {
     }
 
     pub fn add_message(&mut self, msg: ChatMessage) {
-        self.messages.push(msg)
+        self.messages.push(msg);
+        self.scroll_offset = 0;
     }
 
     pub fn clear_input(&mut self) {
@@ -126,5 +131,12 @@ impl AppState {
         }
     }
 
+    pub fn scroll_up(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_add(1)
+
+    }
+    pub fn scroll_down(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(1)
+    }
 
 }
