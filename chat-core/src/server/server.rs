@@ -1,6 +1,7 @@
 
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tracing::{info, debug};
 
 use crate::client::client_manager::ClientManager;
 use crate::server::server_config::ServerConfig;
@@ -27,14 +28,14 @@ impl ChatServer {
         let listener = TcpListener::bind(&self.config.address).await?;
         let (sender, _) = broadcast::channel::<ChatMessage>(self.config.max_clients);
 
-        println!("\n 🦀 Welcome to Rusty Chat");
-        println!(" Server listening on {}\n", self.config.address);
+        info!("RASTATUI CHAT - Server started - ");
+        info!(" Listening on {}", self.config.address);
 
         let mut anonymous_counter = 1u32;
 
         loop {
             let (stream, addr) = listener.accept().await?;
-            println!("✅ New connection from: {}", addr);
+            debug!("✅ New connection from: {}", addr);
 
             let client_manager = self.client_manager.clone();
             let room_manager = self.room_manager.clone();
@@ -54,7 +55,7 @@ impl ChatServer {
                     anon_id,
                 );
                 connection.handler().await;
-                println!("❌ Client disconnected: {}", addr);
+                debug!("❌ Client disconnected: {}", addr);
             });
         }
     }

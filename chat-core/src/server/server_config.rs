@@ -7,7 +7,7 @@ pub struct ServerConfig {
 impl ServerConfig {
     pub fn default() -> Self {
         Self {
-            address: "localhost:4556".to_string(),
+            address: "0.0.0.0:4556".to_string(),
             buffer_size: 1024,
             max_clients: 32,
         }
