@@ -17,8 +17,13 @@ pub enum Action {
     //Chat actions
     UpdateMessageInput(String),
     SendMessage,
-    ScroolUp,
-    ScroolDown,
+    ScrollUp,
+    ScrollDown,
+
+    //Room actions
+    ChangeRoom(String),
+    NextRoom,
+    PreviousRoom,
 
     // Ui Actions
     FocusNext,

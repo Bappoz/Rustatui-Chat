@@ -1,7 +1,5 @@
 use chat_core::message::chat_message::ChatMessage;
-use crate::state::state::ConnectionStatus::Disconnected;
 
-const MAX_MESSAGES_IN_A_ROOM: usize = 100;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppPage {
@@ -45,6 +43,10 @@ pub struct AppState {
     pub input_mode: InputMode,
     pub scroll_offset: usize,
 
+    pub available_rooms: Vec<String>,
+    pub current_room: Option<String>,
+    pub users_in_room: Vec<String>,
+
     pub focused_field: FocusedField,
 }
 
@@ -60,6 +62,13 @@ impl Default for AppState {
             message_input: String::new(),
             input_mode: InputMode::Normal,
             scroll_offset: 0,
+            available_rooms: vec![
+                "general".to_string(),
+                "random".to_string(),
+                "tech".to_string(),
+            ],
+            current_room: Some("general".to_string()),
+            users_in_room: vec!["alice".to_string(), "bob".to_string()],
             focused_field: FocusedField::ServerAddress,
         }
     }
@@ -86,4 +95,36 @@ impl AppState {
     pub fn clear_input(&mut self) {
         self.message_input.clear()
     }
+
+    pub fn change_room(&mut self, room: String) {
+        if self.available_rooms.contains(&room) {
+            self.current_room = Some(room);
+        }
+    }
+
+    pub fn next_room(&mut self) {
+        if let Some(curr) = &self.current_room {
+            if let Some(idx) = self.available_rooms.iter().position(|r| r == curr) {
+                let next_idx = (idx + 1) % self.available_rooms.len();
+                self.current_room = Some(self.available_rooms[next_idx].clone());
+            }
+        } else if !self.available_rooms.is_empty() {
+            self.current_room = Some(self.available_rooms[0].clone());
+        }
+    }
+
+    pub fn previous_room(&mut self) {
+        if let Some(curr) = &self.current_room {
+            if let Some(idx) = self.available_rooms.iter().position(|r| r == curr) {
+                let prev_index = if idx == 0 {
+                    self.available_rooms.len() - 1
+                } else {
+                    idx - 1
+                };
+                self.current_room = Some(self.available_rooms[prev_index].clone())
+            }
+        }
+    }
+
+
 }

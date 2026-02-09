@@ -81,11 +81,9 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                 }
             }
-            Event::Tick => {
-                // Atualização periódica (se necessário)
-            }
+            Event::Tick => {}
             Event::Render => {
-                // Força re-renderização
+                // forces render
             }
         }
     }
@@ -95,6 +93,21 @@ fn run_app<B: ratatui::backend::Backend>(
 
 fn handle_action(state: &mut AppState, action: Action) {
     match action {
+        Action::ScrollUp => {
+            state.scroll_offset = state.scroll_offset.saturating_add(1);
+        },
+        Action::ScrollDown => {
+            state.scroll_offset = state.scroll_offset.saturating_sub(1);
+        },
+        Action::NextRoom => {
+            state.next_room();
+        },
+        Action::PreviousRoom => {
+            state.previous_room();
+        },
+        Action::ChangeRoom(room) => {
+            state.change_room(room);
+        },
         Action::Quit => {
             state.should_quit = true;
         }
@@ -114,8 +127,12 @@ fn handle_action(state: &mut AppState, action: Action) {
             handle_text_input(&mut state.message_input, &input);
         }
         Action::Connect => {
-            // TODO: Implement connection
-            state.current_page = AppPage::Chat;
+            // TODO: implementar conexão real
+            if !state.username.is_empty() && !state.server_address.is_empty() {
+                // Adiciona o usuário na lista
+                state.users_in_room.insert(0, state.username.clone());
+                state.current_page = AppPage::Chat;
+            }
         }
         Action::SendMessage => {
             if state.can_send_message() {

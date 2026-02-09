@@ -1,7 +1,4 @@
-use ratatui::{
-    backend::Backend,
-    Frame,
-};
+use ratatui::Frame;
 use crate::state::state::{AppState, AppPage};
 use crate::view::pages::{
     chat_page::chat_page::ChatPage,

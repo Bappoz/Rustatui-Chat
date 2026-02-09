@@ -41,6 +41,10 @@ impl InputHandler {
                 AppPage::Chat => Some(Action::SendMessage)
             },
             KeyCode::Char('i') => Some(Action::ToggleInputMode),
+            KeyCode::Up => Some(Action::ScrollUp),
+            KeyCode::Down => Some(Action::ScrollDown),
+            KeyCode::Char('n') => Some(Action::NextRoom),
+            KeyCode::Char('p') => Some(Action::PreviousRoom),
             _ => None,
         }
     }
