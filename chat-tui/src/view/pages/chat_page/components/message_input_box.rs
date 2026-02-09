@@ -47,7 +47,7 @@ impl<'a> Widget for MessageInputBox<'a> {
         };
 
         let title_with_status = if self.can_send && is_editing {
-            format!("{} ✓", title)
+            format!("{} ✓  ", title)
         } else {
             title.to_string()
         };

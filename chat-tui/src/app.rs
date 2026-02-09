@@ -71,14 +71,16 @@ impl App {
             return;
         }
 
+        let message = self.state.message_input.clone();
+
         if let Some(client) = &self.state.client {
-            let message = self.state.message_input.clone();
+            // Send to the server - server will echo it back
             if let Err(e) = client.send_message(&message).await {
                 self.state.connection_status = ConnectionStatus::Error(e.to_string());
             }
-            self.state.clear_input();
-            self.state.input_mode = InputMode::Normal;
         }
+
+        self.state.clear_input();
     }
 
     fn handle_text_input(field: &mut String, input: &str) {
@@ -134,17 +136,33 @@ impl App {
             },
             Action::UpdateServerAddress(input) => {
                 Self::handle_text_input(&mut self.state.server_address, &input);
+                // Reset error status when user edits
+                if matches!(self.state.connection_status, ConnectionStatus::Error(_)) {
+                    self.state.connection_status = ConnectionStatus::Disconnected;
+                }
             },
             Action::UpdateUsername(input) => {
                 Self::handle_text_input(&mut self.state.username, &input);
+                // Reset error status when user edits
+                if matches!(self.state.connection_status, ConnectionStatus::Error(_)) {
+                    self.state.connection_status = ConnectionStatus::Disconnected;
+                }
             },
             Action::UpdateMessageInput(input) => {
                 Self::handle_text_input(&mut self.state.message_input, &input);
             }
             Action::ToggleInputMode => {
                 self.state.input_mode = match self.state.input_mode {
+                    InputMode::Normal => {
+                        match self.state.current_page{
+                            AppPage::Chat => {
+                                self.state.focused_field = FocusedField::MessageInput;
+                            },
+                            _ => {}
+                        }
+                        InputMode::Editing
+                    },
                     InputMode::Editing => InputMode::Normal,
-                    InputMode::Normal => InputMode::Editing
                 };
             }
             Action::NextRoom => {

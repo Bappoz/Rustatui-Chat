@@ -80,7 +80,8 @@ impl<'a> ConnectionPage<'a> {
         let is_focused = matches!(self.state.focused_field, FocusedField::ConnectButton);
         let can_connect = !self.state.server_address.is_empty()
             && !self.state.username.is_empty()
-            && matches!(self.state.connection_status, ConnectionStatus::Disconnected);
+            && matches!(self.state.connection_status, 
+                ConnectionStatus::Disconnected | ConnectionStatus::Error(_));
 
         let (text, style) = if can_connect {
             ("[ Connect ]", Style::default().fg(if is_focused {Color::Yellow} else {Color::Green}))

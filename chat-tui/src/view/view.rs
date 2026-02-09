@@ -8,7 +8,7 @@ use crate::view::pages::{
 pub struct View;
 
 impl View {
-    pub fn render(state: &AppState, frame: &mut Frame) {
+    pub fn render(state: &AppState, frame: &mut Frame){
         match state.current_page {
             AppPage::Connection => {
                 let connection_page = ConnectionPage::new(state);

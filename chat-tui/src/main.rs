@@ -7,17 +7,20 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
-    backend::CrosstermBackend,
+    backend::{CrosstermBackend, Backend},
     Terminal,
 };
-use chat_tui::state::state::AppState;
-use chat_tui::view::view::View;
-use chat_tui::event::event_handler::{EventHandler, Event};
-use chat_tui::input::input_handler::InputHandler;
-use chat_tui::state::state::{AppPage, InputMode, FocusedField};
-use chat_tui::state::action::Action;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+use chat_tui::{
+    app::App,
+    state::action::Action,
+    view::view::View,
+    event::event_handler::{Event, EventHandler},
+    input::input_handler::InputHandler
+};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -25,16 +28,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create App state
-    let mut app_state = AppState::new();
+    // create App
+    let mut app = App::new();
 
-    // create the event handle (captures the binds)
-    let event_handler = EventHandler::new(Duration::from_millis(250));
+    // Create event handler
+    let event_handler = EventHandler::new(Duration::from_millis(100));
+
+    // Get action sender
+    let action_tx = app.action_tx();
 
     // main loop
-    let result = run_app(&mut terminal, &mut app_state, event_handler);
+    let result = run_app(&mut terminal, &mut app, event_handler, action_tx).await;
 
-    // restore terminal
+    // Restores terminal
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -44,140 +50,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal.show_cursor()?;
 
     if let Err(err) = result {
-        println!("Error: {:?}", err);
+        eprintln!("Error: {:?}", err);
     }
 
     Ok(())
 }
 
-fn run_app<B: ratatui::backend::Backend>(
+async fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
-    state: &mut AppState,
+    app: &mut App,
     event_handler: EventHandler,
-) -> Result<(), Box<dyn std::error::Error>>
-    where
-        B::Error: 'static,
+    action_tx: tokio::sync::mpsc::UnboundedSender<Action>,
+) -> io::Result<()>
+    where io::Error: From<<B as Backend>::Error>
 {
     loop {
-        // Render the UI
+        // Process messages and actions
+        app.tick().await;
+
+        // Render UI
         terminal.draw(|frame| {
-            View::render(state, frame);
+            View::render(&app.state, frame);
         })?;
 
-        // Capture the events
+        // quit
+        if app.state.should_quit {
+            break;
+        }
+
+        // Capture events with timeout
         match event_handler.next()? {
             Event::Key(key) => {
-                // Translate keybind action
+                // Translate keyboard actions
                 if let Some(action) = InputHandler::handle_key(
                     key,
-                    &state.current_page,
-                    &state.input_mode,
-                    &state.focused_field,
+                    &app.state.current_page,
+                    &app.state.input_mode,
+                    &app.state.focused_field,
                 ) {
-                    handle_action(state, action);
-
-                    if state.should_quit {
-                        break;
-                    }
+                    // Send action to process
+                    let _ = action_tx.send(action);
                 }
             }
             Event::Tick => {}
-            Event::Render => {
-                // forces render
-            }
+            Event::Render => {}
         }
     }
 
     Ok(())
-}
-
-fn handle_action(state: &mut AppState, action: Action) {
-    match action {
-        Action::ScrollUp => {
-            state.scroll_offset = state.scroll_offset.saturating_add(1);
-        },
-        Action::ScrollDown => {
-            state.scroll_offset = state.scroll_offset.saturating_sub(1);
-        },
-        Action::NextRoom => {
-            state.next_room();
-        },
-        Action::PreviousRoom => {
-            state.previous_room();
-        },
-        Action::ChangeRoom(room) => {
-            state.change_room(room);
-        },
-        Action::Quit => {
-            state.should_quit = true;
-        }
-        Action::SwitchToConnectionPage => {
-            state.current_page = AppPage::Connection;
-        }
-        Action::SwitchToChatPage => {
-            state.current_page = AppPage::Chat;
-        }
-        Action::UpdateServerAddress(input) => {
-            handle_text_input(&mut state.server_address, &input);
-        }
-        Action::UpdateUsername(input) => {
-            handle_text_input(&mut state.username, &input);
-        }
-        Action::UpdateMessageInput(input) => {
-            handle_text_input(&mut state.message_input, &input);
-        }
-        Action::Connect => {
-            // TODO: implementar conexão real
-            if !state.username.is_empty() && !state.server_address.is_empty() {
-                // Adiciona o usuário na lista
-                state.users_in_room.insert(0, state.username.clone());
-                state.current_page = AppPage::Chat;
-            }
-        }
-        Action::SendMessage => {
-            if state.can_send_message() {
-                // TODO: send message
-                state.clear_input();
-            }
-        }
-        Action::ToggleInputMode => {
-            state.input_mode = match state.input_mode {
-                InputMode::Normal => InputMode::Editing,
-                InputMode::Editing => InputMode::Normal,
-            };
-        }
-        Action::FocusNext => {
-            state.focused_field = match state.current_page {
-                AppPage::Connection => match state.focused_field {
-                    FocusedField::ServerAddress => FocusedField::Username,
-                    FocusedField::Username => FocusedField::ConnectButton,
-                    FocusedField::ConnectButton => FocusedField::ServerAddress,
-                    _ => FocusedField::ServerAddress,
-                },
-                AppPage::Chat => FocusedField::MessageInput,
-            };
-        }
-        Action::FocusPrevious => {
-            state.focused_field = match state.current_page {
-                AppPage::Connection => match state.focused_field {
-                    FocusedField::ServerAddress => FocusedField::ConnectButton,
-                    FocusedField::Username => FocusedField::ServerAddress,
-                    FocusedField::ConnectButton => FocusedField::Username,
-                    _ => FocusedField::ConnectButton,
-                },
-                AppPage::Chat => FocusedField::MessageInput,
-            };
-        }
-        _ => {}
-    }
-}
-
-fn handle_text_input(field: &mut String, input: &str) {
-    if input == "\x08" {
-        // Backspace
-        field.pop();
-    } else {
-        // Adiciona caractere
-        field.push_str(input);
-    }
 }

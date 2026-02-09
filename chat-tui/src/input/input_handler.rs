@@ -13,7 +13,6 @@ impl InputHandler {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Some(Action::Quit);
         }
-
         match input_mode {
             InputMode::Normal => Self::handle_normal_mode(key, current_page, focused_field),
             InputMode::Editing => Self::handle_editing_mode(key, current_page, focused_field),
@@ -28,6 +27,7 @@ impl InputHandler {
     ) -> Option<Action> {
         match key.code {
             KeyCode::Char('q') => Some(Action::Quit),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Quit),
             KeyCode::Tab => Some(Action::FocusNext),
             KeyCode::BackTab => Some(Action::FocusPrevious),
             KeyCode::Enter => match current_page {
@@ -60,29 +60,39 @@ impl InputHandler {
                 AppPage::Connection => Some(Action::ToggleInputMode),
                 AppPage::Chat => Some(Action::SendMessage),
             },
-            KeyCode::Char(c) => match (current_page, focused_field) {
-                (AppPage::Connection, FocusedField::ServerAddress) => {
-                    Some(Action::UpdateServerAddress(c.to_string()))
-                },
-                (AppPage::Connection, FocusedField::Username) => {
-                    Some(Action::UpdateUsername(c.to_string()))
-                },
-                (AppPage::Chat, FocusedField::MessageList) => {
-                    Some(Action::UpdateMessageInput(c.to_string()))
-                },
-                _ => None
-            },
-            KeyCode::Backspace => match (current_page, focused_field) {
-                (AppPage::Connection, FocusedField::ServerAddress) => {
-                    Some(Action::UpdateServerAddress(String::from("\x08")))
+            KeyCode::Char(c) => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return None;
                 }
-                (AppPage::Connection, FocusedField::Username) => {
-                    Some(Action::UpdateUsername(String::from("\x08")))
-                },
-                (AppPage::Chat, FocusedField::MessageList) => {
-                    Some(Action::UpdateMessageInput(String::from("\x08")))
-                },
-                _ => None
+                match (current_page, focused_field) {
+                    (AppPage::Connection, FocusedField::ServerAddress) => {
+                        Some(Action::UpdateServerAddress(c.to_string()))
+                    },
+                    (AppPage::Connection, FocusedField::Username) => {
+                        Some(Action::UpdateUsername(c.to_string()))
+                    },
+                    (AppPage::Chat, FocusedField::MessageInput) => {
+                        Some(Action::UpdateMessageInput(c.to_string()))
+                    },
+                    _ => None
+                }
+            },
+            KeyCode::Backspace => {
+                match (current_page, focused_field) {
+                    (AppPage::Connection, FocusedField::ServerAddress) => {
+                        Some(Action::UpdateServerAddress("\x08".to_string()))
+                    }
+                    (AppPage::Connection, FocusedField::Username) => {
+                        Some(Action::UpdateUsername("\x08".to_string()))
+                    }
+                    (AppPage::Chat, FocusedField::MessageInput) => {
+                        Some(Action::UpdateMessageInput("\x08".to_string()))
+                    }
+                    _ => None,
+                }
+            },
+            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                None   // Ignore navigation keys
             },
             _ => None,
         }

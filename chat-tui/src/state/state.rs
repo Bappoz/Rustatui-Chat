@@ -1,5 +1,4 @@
 use chat_core::message::chat_message::ChatMessage;
-use crate::client::tui_client;
 use crate::client::tui_client::TuiClient;
 
 #[derive(Debug, Clone, PartialEq)]
