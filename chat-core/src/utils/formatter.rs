@@ -1,25 +1,70 @@
+use crate::utils::{color_manager::ColorGenerator, color::Colors};
+use crate::message::chat_message::{MessageType, ChatMessage};
+
 pub struct Formatter;
 
 impl Formatter {
-    // Right Alignment
-    pub fn align_right(text: &str, width: usize) -> String {
-        let text_len = text.chars().count();
-        if text_len >= width {
-            return text.to_string();
+    /// Formata mensagem própria (You: message)
+    pub fn format_own_message(content: &str, _terminal_width: usize) -> String {
+        format!("You: {}", content)
+    }
+}
+
+pub fn format_message(msg: &ChatMessage) -> String {
+    let timestamp = msg.timestamp.format("%H:%M:%S");
+    let user_color_ansi = ColorGenerator::hex_to_ansi(&msg.color);
+
+    match msg.message_type {
+        MessageType::Chat => {
+            format!(
+                "{}[{}]{} {}{}{}: {}\n",
+                Colors::BOLD,
+                timestamp,
+                Colors::RESET,
+                user_color_ansi,
+                msg.sender_name,
+                Colors::RESET,
+                msg.content
+            )
         }
-        format!("{}{}", " ".repeat(width - text_len), text)
-    }
+        MessageType::System => {
+            format!(
+                "{}[SYSTEM] {}{}\n",
+                Colors::SYSTEM,
+                msg.content,
+                Colors::RESET
+            )
+        }
+        MessageType::Whisper => {
+            format!(
+                "{}[Whisper from {}] {}{}\n",
+                Colors::WHISPER,
+                msg.sender_name,
+                msg.content,
+                Colors::RESET
+            )
+        }
+        MessageType::Command => {
+            format!(
+                "{}[Command] {}{}\n",
+                Colors::INFO,
+                msg.content,
+                Colors::RESET
+            )
+        }        MessageType::UserList => {
+            // User list is handled separately by the client
+            String::new()
+        }    }
+}
 
-    // Formats own message
-    pub fn format_own_message(message: &str, terminal_width: usize) -> String {
-        let prefix = "You: ";
-        let full_msg = format!("{}{}", prefix, message);
-        Self::align_right(&full_msg, terminal_width)
-    }
+pub fn format_user_list(users: &[String]) -> String {
+    let mut output = format!("{}Users in this room:{}\n", Colors::INFO, Colors::RESET);
+    for user in users {
+        // Generate color for each user
+        let user_color_hex = ColorGenerator::generate_user_color(user);
+        let user_color_ansi = ColorGenerator::hex_to_ansi(&user_color_hex);
 
-    pub fn format_other_message(name: &str, message: &str, color: &str) -> String {
-        use crate::utils::color::Colors;
-        let colored_name = Colors::colorize(name, color);
-        format!("{}: {}", colored_name, message)
+        output.push_str(&format!("  {}{}{}\n", user_color_ansi, user, Colors::RESET));
     }
+    output
 }
