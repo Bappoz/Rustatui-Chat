@@ -7,6 +7,7 @@ pub enum MessageType {
     Whisper,
     System,
     Command,
+    UserList,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,9 @@ impl ChatMessage {
         sender_name: String,
         room: String,
     ) -> Self {
+
+        use crate::utils::color_manager::ColorGenerator;
+        let color = ColorGenerator::generate_user_color(&sender_name);
         Self {
             content, 
             sender_addr,
@@ -35,7 +39,7 @@ impl ChatMessage {
             room,
             message_type: MessageType::Chat,
             target: None,
-            color: "white".to_string(),
+            color,
             timestamp: Utc::now()
         }
     }
@@ -48,7 +52,7 @@ impl ChatMessage {
             room,
             message_type: MessageType::System,
             target: None,
-            color: "yellow".to_string(),
+            color: "#808080".to_string(),
             timestamp: Utc::now(),
         }
     }
@@ -57,19 +61,36 @@ impl ChatMessage {
         content: String,
         sender_addr: SocketAddr,
         sender_name: String,
-        target: SocketAddr
+        target: SocketAddr,
     ) -> Self {
+
+        use crate::utils::color_manager::ColorGenerator;
+        let color = ColorGenerator::generate_user_color(&sender_name);
+
         Self {
             content,
             sender_addr,
             sender_name,
-            room: String::new(),
+            room: "private".to_string(),
             message_type: MessageType::Whisper,
             target: Some(target),
-            color: "magenta".to_string(),
+            color,
             timestamp: Utc::now(),
         }
     }
 
-
+    pub fn user_list(users: Vec<String>, room: String) -> Self {
+        // Format: "USER_LIST|user1,user2,user3"
+        let content = format!("USER_LIST|{}", users.join(","));
+        Self {
+            content,
+            sender_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), 0),
+            sender_name: "SYSTEM".to_string(),
+            room,
+            message_type: MessageType::UserList,
+            target: None,
+            color: "#808080".to_string(),
+            timestamp: Utc::now(),
+        }
+    }
 }

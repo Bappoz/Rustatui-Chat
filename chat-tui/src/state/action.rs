@@ -24,6 +24,7 @@ pub enum Action {
     ChangeRoom(String),
     NextRoom,
     PreviousRoom,
+    UpdateUserList(Vec<String>),
 
     // Ui Actions
     FocusNext,

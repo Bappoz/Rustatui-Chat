@@ -26,35 +26,27 @@ impl<'a> MessageList<'a> {
         }
     }
 
-    pub fn format_message(&self, message: &'a ChatMessage) -> ListItem<'a> {
-        let is_own_message = message.sender_name == self.current_username;
-        let timestamp = message.timestamp.format("%H:%M:%S").to_string();
+    pub fn hex_to_ratatui(hex: &str) -> Color {
+        use chat_core::utils::color_manager::ColorGenerator;
+        let (r, g, b) = ColorGenerator::hex_to_rgb(hex);
+        Color::Rgb(r, g, b)
+    }
 
-        let line = if is_own_message {
-            Line::from(vec![
-                Span::styled(
-                    format!("[{}] ", timestamp),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(
-                    format!("{}: ", message.sender_name),
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(&message.content),
-            ])
-        } else {
-            Line::from(vec![
-                Span::styled(
-                    format!("[{}] ", timestamp),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(
-                    format!("{}: ", message.sender_name),
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(&message.content),
-            ])
-        };
+    pub fn format_message(&self, message: &'a ChatMessage) -> ListItem<'a> {
+        let timestamp = message.timestamp.format("%H:%M:%S").to_string();
+        let color = Self::hex_to_ratatui(&message.color);
+
+        let line = Line::from(vec![
+            Span::styled(
+                format!("[{}] ", timestamp),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                format!("{}: ", message.sender_name),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(&message.content),
+        ]);
 
         ListItem::new(line)
     }
@@ -65,7 +57,7 @@ impl<'a> Widget for MessageList<'a> {
     where
         Self: Sized,
     {
-        let visible_height = area.height.saturating_sub(2) as usize; // -2 para as bordas
+        let visible_height = area.height.saturating_sub(2) as usize; // -2 for Borders
 
         let total_messages = self.messages.len();
         let start_idx = total_messages.saturating_sub(visible_height + self.scroll_offset);

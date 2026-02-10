@@ -9,12 +9,14 @@ use chat_core::message::chat_message::ChatMessage;
 pub struct TuiClient {
     writer: Arc<Mutex<BufWriter<tokio::net::tcp::OwnedWriteHalf>>>,
     pub message_rx: mpsc::UnboundedReceiver<ChatMessage>,
+    pub action_tx: Option<mpsc::UnboundedSender<crate::state::action::Action>>,
 }
 
 impl TuiClient {
     pub async fn connect(
         server_addr: &str,
         username: String,
+        action_tx: mpsc::UnboundedSender<crate::state::action::Action>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let stream = TcpStream::connect(server_addr).await?;
         let (read_half, write_half) = stream.into_split();
@@ -24,7 +26,6 @@ impl TuiClient {
 
         let mut reader = BufReader::new(read_half);
         
-        // Aguarda um pouco para servidor enviar prompt
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Envia username
@@ -33,12 +34,11 @@ impl TuiClient {
         w.flush().await?;
         drop(w);
 
-        // Lê linhas de validação do servidor
+        // Read validation lines
         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
         
         let mut validation_lines = Vec::new();
         
-        // Tenta ler até 5 linhas ou até timeout
         for _ in 0..5 {
             let mut line = String::new();
             match tokio::time::timeout(
@@ -53,7 +53,7 @@ impl TuiClient {
             }
         }
 
-        // Verifica se nome foi rejeitado
+        // Check if the name was accepted
         for line in &validation_lines {
             if line.contains("The name is taken") {
                 return Err("Username already taken. Please choose another name.".into());
@@ -63,15 +63,17 @@ impl TuiClient {
             }
         }
 
-        // Nome aceito! Spawn receiver
+        // Accepted name! Spawn receiver
         let username_clone = username.clone();
+        let action_tx_clone = action_tx.clone();
         tokio::spawn(async move {
-            Self::receive_messages_with_reader(reader, message_tx, username_clone).await;
+            Self::receive_messages_with_reader(reader, message_tx, username_clone, action_tx_clone).await;
         });
 
         Ok(Self {
             writer,
             message_rx,
+            action_tx: Some(action_tx),
         })
     }
 
@@ -79,6 +81,7 @@ impl TuiClient {
         mut reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
         tx: mpsc::UnboundedSender<ChatMessage>,
         current_room: String,
+        action_tx: mpsc::UnboundedSender<crate::state::action::Action>,
     ) {
         let mut line = String::new();
 
@@ -92,18 +95,19 @@ impl TuiClient {
                     // Remove ANSI color codes
                     let clean_line = Self::strip_ansi_codes(trimmed);
 
-                    // Ignore prompts
+                    // Ignore prompts and empty lines
                     if clean_line.is_empty()
                         || clean_line.starts_with('>')
                         || clean_line.contains("Enter your nickname")
                         || clean_line.contains("Welcome")
                         || clean_line.contains("Type /help")
+                        || clean_line.contains("Joined room:")
                         || clean_line.contains("Available commands") {
                         continue;
                     }
 
-                    // Parse and send message
-                    if let Ok(message) = Self::parse_message(&clean_line, &current_room) {
+                    // Parse structured messages from server
+                    if let Ok(message) = Self::parse_structured_message(&clean_line, &current_room, &action_tx) {
                         let _ = tx.send(message);
                     }
                 }
@@ -147,81 +151,75 @@ impl TuiClient {
     }
 
 
-    fn parse_message(line: &str, room: &str) -> Result<ChatMessage, Box<dyn std::error::Error>> {
+    fn parse_structured_message(
+        line: &str, 
+        room: &str,
+        action_tx: &mpsc::UnboundedSender<crate::state::action::Action>,
+    ) -> Result<ChatMessage, Box<dyn std::error::Error>> {
         let line = line.trim();
 
-        // Ignora linhas vazias
+        // Ignore empty lines
         if line.is_empty() {
             return Err("Empty line".into());
         }
 
-        // Ignora apenas prompts específicos de conexão
-        if line.contains("Name (press Enter for") 
-            || line.contains("Welcome to Rusty Chat")
-            || line.contains("Type /help for commands")
-            || line.starts_with("Name must be")
-            || line.starts_with("The name is taken")
-            || line.starts_with("Command executed")
-            || line.starts_with("Whisper sent")
-            || line.starts_with("Joined room:")
-            || line.starts_with("Welcome,")
-            || line.contains("joined")
-            || line.contains("Returned to")
-        {
-            return Err("System prompt".into());
+        // USER_LIST|user1,user2,user3
+        if line.starts_with("USER_LIST|") {
+            let users_str = line.strip_prefix("USER_LIST|").unwrap_or("");
+            let users: Vec<String> = users_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            // Send action to update user list
+            let _ = action_tx.send(crate::state::action::Action::UpdateUserList(users));
+            
+            // Return a dummy message that will be ignored
+            return Err("User list update".into());
         }
 
-        // Mensagens do sistema [SYSTEM]
-        if line.starts_with("[SYSTEM]") {
+        // SYSTEM|content
+        if line.starts_with("SYSTEM|") {
+            let content = line.strip_prefix("SYSTEM|").unwrap_or(line).trim().to_string();
             return Ok(ChatMessage {
-                content: line.strip_prefix("[SYSTEM]").unwrap_or(line).trim().to_string(),
+                content,
                 sender_addr: "0.0.0.0:0".parse()?,
                 sender_name: "System".to_string(),
                 room: room.to_string(),
                 message_type: chat_core::message::chat_message::MessageType::System,
                 target: None,
-                color: "#FFA500".to_string(),
+                color: "#808080".to_string(),
                 timestamp: chrono::Utc::now(),
             });
         }
 
-        // Whispers [Whisper from ...]
-        if line.starts_with("[Whisper from") {
-            if let Some(close_bracket) = line.find(']') {
-                let sender = line[14..close_bracket].to_string();
-                let content = line[close_bracket + 1..].trim().to_string();
+        // CHAT|timestamp|sender|color|content
+        if line.starts_with("CHAT|") {
+            let parts: Vec<&str> = line.splitn(5, '|').collect();
+            if parts.len() == 5 {
+                let timestamp_str = parts[1];
+                let sender = parts[2].to_string();
+                let color = parts[3].to_string();
+                let content = parts[4].to_string();
+
+                let timestamp = chrono::DateTime::parse_from_str(
+                    timestamp_str, 
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| chrono::Utc::now());
+
                 return Ok(ChatMessage {
                     content,
                     sender_addr: "0.0.0.0:0".parse()?,
                     sender_name: sender,
                     room: room.to_string(),
-                    message_type: chat_core::message::chat_message::MessageType::Whisper,
+                    message_type: chat_core::message::chat_message::MessageType::Chat,
                     target: None,
-                    color: "#FF00FF".to_string(),
-                    timestamp: chrono::Utc::now(),
+                    color,
+                    timestamp,
                 });
-            }
-        }
-
-        // Mensagens de chat normais (formato: "username: message")
-        if let Some(colon_pos) = line.find(':') {
-            if colon_pos > 0 && colon_pos < line.len() - 1 {
-                let sender = line[..colon_pos].trim().to_string();
-                let content = line[colon_pos + 1..].trim().to_string();
-                
-                // Aceita qualquer mensagem que tenha o formato correto
-                if !sender.is_empty() && !content.is_empty() {
-                    return Ok(ChatMessage {
-                        content,
-                        sender_addr: "0.0.0.0:0".parse()?,
-                        sender_name: sender,
-                        room: room.to_string(),
-                        message_type: chat_core::message::chat_message::MessageType::Chat,
-                        target: None,
-                        color: "#00FFFF".to_string(),
-                        timestamp: chrono::Utc::now(),
-                    });
-                }
             }
         }
 

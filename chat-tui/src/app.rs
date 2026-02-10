@@ -54,7 +54,7 @@ impl App {
         }
         self.state.connection_status = ConnectionStatus::Connecting;
 
-        match TuiClient::connect(&self.state.server_address, self.state.username.clone()).await {
+        match TuiClient::connect(&self.state.server_address, self.state.username.clone(), self.action_tx.clone()).await {
             Ok(client) => {
                 self.state.client = Some(client);
                 self.state.connection_status = ConnectionStatus::Connected;
@@ -192,6 +192,12 @@ impl App {
             },
             Action::FocusPrevious => {
                 self.focus_previous()
+            },
+            Action::UpdateUserList(users) => {
+                // Filter out current user to avoid duplication
+                self.state.users_in_room = users.into_iter()
+                    .filter(|u| u != &self.state.username)
+                    .collect();
             },
             _ => {}
         }
