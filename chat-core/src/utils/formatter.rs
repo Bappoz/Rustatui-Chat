@@ -51,10 +51,19 @@ pub fn format_message(msg: &ChatMessage) -> String {
                 msg.content,
                 Colors::RESET
             )
-        }        MessageType::UserList => {
+        }
+        MessageType::UserList => {
             // User list is handled separately by the client
             String::new()
-        }    }
+        }
+
+        MessageType::RoomList => {
+            String::new()
+        }
+        MessageType::RoomJoin => {
+            String::new()
+        }
+    }
 }
 
 pub fn format_user_list(users: &[String]) -> String {

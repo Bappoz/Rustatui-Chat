@@ -104,4 +104,18 @@ impl RoomManager {
         let rooms = self.rooms.read().await;
         rooms.get(room_name).map(|room| (room.owner, room.password.clone()))
     }
+
+    pub async fn delete_room(&self, room_name: &str, requester: SocketAddr) -> Result<(), String> {
+        if room_name == "general" {
+            return Err("Cannot delete this room".to_string());
+        }
+        let mut rooms = self.rooms.write().await;
+        let room = rooms.get(room_name)
+            .ok_or_else(|| format!("Room '{}' does not exist", room_name))?;
+         if room.owner != requester {
+             return Err("Only the owner can delete this room".to_string())
+         }
+        rooms.remove(room_name);
+        Ok(())
+    }
 }

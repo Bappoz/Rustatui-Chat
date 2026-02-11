@@ -7,6 +7,7 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use crate::client::client_manager::ClientManager;
 use crate::message::chat_message::ChatMessage;
 use crate::message::chat_message::MessageType;
+use crate::message::command_processor::{CommandProcessor, CommandResult};
 use crate::server::room_manager::RoomManager;
 
 struct MessageLoopContext {
@@ -109,6 +110,25 @@ impl ClientConnection {
         let _ = message_sender.send(user_list_msg);
     }
 
+    /// Broadcast room list to all clients
+    async fn broadcast_room_list(
+        room_manager: &RoomManager,
+        message_sender: &Sender<ChatMessage>,
+    ) {
+        let rooms = room_manager.list_rooms().await;
+        let room_names: Vec<String> = rooms.iter()
+            .map(|(name, _count, protected)| {
+                if *protected {
+                    format!("{}🔒", name)
+                } else{
+                    name.clone()
+                }
+            }).collect();
+
+        let room_list_msg = ChatMessage::room_list(room_names);
+        let _ = message_sender.send(room_list_msg);
+    }
+
     async fn message_loop_static(
         ctx: MessageLoopContext,
         message_receiver: &mut Receiver<ChatMessage>,
@@ -116,6 +136,40 @@ impl ClientConnection {
         writer: &mut tokio::net::tcp::WriteHalf<'_>,
         input: &mut String,
     ) -> Result<(), Box<dyn std::error::Error>> {
+
+        // Send initial list of the rooms that can connect
+        {
+            let rooms = ctx.room_manager.list_rooms().await;
+            let room_names: Vec<String> = rooms.iter()
+                .map(|(name, _count, protected)| {
+                    if *protected {
+                        format!("{}🔒", name)
+                    } else {
+                        name.clone()
+                    }
+                })
+                .collect();
+
+            let formatted = format!("ROOM_LIST|{}\n", room_names.join(","));
+            writer.write_all(formatted.as_bytes()).await?;
+        }
+
+
+        // Send user list
+        {
+            if let Some(room_name) = ctx.room_manager.get_user_room(&ctx.addr).await {
+                let members = ctx.room_manager.get_room_members(&room_name).await;
+                let mut users = Vec::new();
+                for member_addr in members {
+                    if let Some(name) = ctx.client_manager.get_clients_name(&member_addr).await {
+                        users.push(name);
+                    }
+                }
+                let formatted = format!("USER_LIST|{}\n", users.join(","));
+                writer.write_all(formatted.as_bytes()).await?;
+            }
+        }
+
         loop {
             select! {
                 result = buf_reader.read_line(input) => {
@@ -124,17 +178,93 @@ impl ClientConnection {
                         Ok(_) => {
                             let message = input.trim().to_string();
                             if !message.is_empty() {
-                                // Normal message (TUI-focused)
-                                if let Some(sender_name) = ctx.client_manager.get_clients_name(&ctx.addr).await {
-                                    if let Some(room) = ctx.room_manager.get_user_room(&ctx.addr).await {
-                                        // Message to others
-                                        let chat_msg = ChatMessage::new(
-                                            message.clone(),
+                                // Check if it's a command
+                                if message.starts_with('/') {
+                                    if let Some(cmd_result) = CommandProcessor::parse(&message) {
+                                        let is_quit = matches!(cmd_result, CommandResult::Quit);
+
+                                        match CommandProcessor::execute(
+                                            cmd_result,
                                             ctx.addr,
-                                            sender_name.clone(),
-                                            room,
-                                        );
-                                        let _ = ctx.message_sender.send(chat_msg);
+                                            &ctx.client_manager,
+                                            &ctx.room_manager,
+                                        ).await {
+                                            Ok(Some(response_msg)) => {
+                                                match response_msg.message_type {
+                                                    MessageType::RoomJoin => {
+                                                        // send confirmation
+                                                        if let Some(target) = response_msg.target {
+                                                            if target == ctx.addr {
+                                                                let formatted = format!("ROOM_JOINED|{}\n", response_msg.content);
+                                                                writer.write_all(formatted.as_bytes()).await?;
+
+                                                                // Send user list
+                                                                let members = ctx.room_manager.get_room_members(&response_msg.content).await;
+                                                                let mut users = Vec::new();
+                                                                for member_addr in members {
+                                                                    if let Some(name) = ctx.client_manager.get_clients_name(&member_addr).await {
+                                                                        users.push(name);
+                                                                    }
+                                                                }
+                                                                let user_list = format!("USER_LIST|{}\n", users.join(","));
+                                                                writer.write_all(user_list.as_bytes()).await?;
+                                                            }
+                                                        }
+
+                                                        // Broadcast updated room list
+                                                        Self::broadcast_room_list(&ctx.room_manager, &ctx.message_sender).await;
+
+                                                    }
+                                                    MessageType::Whisper => {
+                                                        // Whisper is handled in broadcast
+                                                        let _ = ctx.message_sender.send(response_msg);
+                                                    }
+                                                    MessageType::UserList => {
+                                                        // Broadcast updated user list
+                                                        let _ = ctx.message_sender.send(response_msg);
+                                                    }
+                                                    _ => {
+                                                        let _ = ctx.message_sender.send(response_msg);
+                                                    }
+                                                }
+                                            }
+                                            Ok(None) => {
+                                                // Command executed without response (like /help shown locally)
+                                            }
+                                            Err(msg) => {
+                                                // Command error (send as SYSTEM message)
+                                                let formatted = format!("SYSTEM|{}\n", msg);
+                                                writer.write_all(formatted.as_bytes()).await?;
+                                            }
+                                        }
+
+                                        if is_quit {
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    // Normal message (TUI-focused)
+                                    if let Some(sender_name) = ctx.client_manager.get_clients_name(&ctx.addr).await {
+                                        if let Some(room) = ctx.room_manager.get_user_room(&ctx.addr).await {
+                                            let chat_msg = ChatMessage::new(
+                                                message.clone(),
+                                                ctx.addr,
+                                                sender_name.clone(),
+                                                room,
+                                            );
+                                            
+                                            //  Echo back to sender
+                                            let formatted = format!("CHAT|{}|{}|{}|{}\n",
+                                                chat_msg.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                                                chat_msg.sender_name,
+                                                chat_msg.color,
+                                                chat_msg.content
+                                            );
+                                            writer.write_all(formatted.as_bytes()).await?;
+                                            
+                                            // Broadcast to others
+                                            let _ = ctx.message_sender.send(chat_msg);
+                                        }
                                     }
                                 }
                             }
@@ -153,14 +283,20 @@ impl ClientConnection {
                             // Send user list to TUI client
                             if let Some(my_room) = ctx.room_manager.get_user_room(&ctx.addr).await {
                                 if chat_msg.room == my_room {
-                                    writer.write_all(format!("{}\n", chat_msg.content).as_bytes()).await?;
+                                    let formatted = format!("USER_LIST|{}\n", chat_msg.content);
+                                    writer.write_all(formatted.as_bytes()).await?;
                                 }
                             }
+                        }
+                        MessageType::RoomList => {
+                            // Send room list to TUI client
+                            let formatted = format!("ROOM_LIST|{}\n", chat_msg.content);
+                            writer.write_all(formatted.as_bytes()).await?;
                         }
                         MessageType::Chat => {
                             // Only receives from the same room
                             if let Some(my_room) = ctx.room_manager.get_user_room(&ctx.addr).await {
-                                if chat_msg.room == my_room {
+                                if chat_msg.room == my_room && chat_msg.sender_addr != ctx.addr {
                                     // Send structured message: "CHAT|<timestamp>|<sender>|<color>|<content>"
                                     let formatted = format!("CHAT|{}|{}|{}|{}\n",
                                         chat_msg.timestamp.format("%Y-%m-%d %H:%M:%S"),
@@ -173,8 +309,22 @@ impl ClientConnection {
                             }
                         }
                         MessageType::System => {
-                            writer.write_all(format!("SYSTEM|{}\n", chat_msg.content).as_bytes()).await?;
+                            let formatted = format!("SYSTEM|{}\n", chat_msg.content);
+                            writer.write_all(formatted.as_bytes()).await?;
                         }
+                        MessageType::Whisper => {
+                            // Send whisper to target
+                            if let Some(target) = chat_msg.target {
+                                if target == ctx.addr {
+                                    let formatted = format!("SYSTEM|[Whisper from {}] {}\n",
+                                        chat_msg.sender_name,
+                                        chat_msg.content
+                                    );
+                                    writer.write_all(formatted.as_bytes()).await?;
+                                }
+                            }
+                        }
+
                         _ => {}
                     }
                 }

@@ -8,6 +8,8 @@ pub enum MessageType {
     System,
     Command,
     UserList,
+    RoomList,
+    RoomJoin,
 }
 
 #[derive(Debug, Clone)]
@@ -80,8 +82,7 @@ impl ChatMessage {
     }
 
     pub fn user_list(users: Vec<String>, room: String) -> Self {
-        // Format: "USER_LIST|user1,user2,user3"
-        let content = format!("USER_LIST|{}", users.join(","));
+        let content = users.join(",");
         Self {
             content,
             sender_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), 0),
@@ -89,6 +90,33 @@ impl ChatMessage {
             room,
             message_type: MessageType::UserList,
             target: None,
+            color: "#808080".to_string(),
+            timestamp: Utc::now(),
+        }
+    }
+
+    pub fn room_list(rooms: Vec<String>) -> Self {
+        let content = rooms.join(",");
+        Self {
+            content,
+            sender_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), 0),
+            sender_name: "SYSTEM".to_string(),
+            room: "system".to_string(),
+            message_type: MessageType::RoomList,
+            target: None,
+            color: "#808080".to_string(),
+            timestamp: Utc::now(),
+        }
+    }
+
+    pub fn room_joined(room_name: String, addr: SocketAddr) -> Self {
+        Self {
+            content: room_name.clone(),
+            sender_addr: addr,
+            sender_name: "SYSTEM".to_string(),
+            room: room_name,
+            message_type: MessageType::RoomJoin,
+            target: Some(addr),
             color: "#808080".to_string(),
             timestamp: Utc::now(),
         }

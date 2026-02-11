@@ -125,7 +125,10 @@ impl CommandProcessor {
                     room_manager.leave_room(curr, &addr).await;
                 }
                 match room_manager.join_room(&room, addr, password.as_deref()).await {
-                    Ok(_) => Err(format!("✓ Joined room: {}", room)),
+                    Ok(_) => {
+                        let msg = ChatMessage::room_joined(room, addr);
+                        Ok(Some(msg))
+                    }
                     Err(e) => Err(format!("✗ {}", e)),
                 }
             }
@@ -141,12 +144,8 @@ impl CommandProcessor {
                         // Enters automatically in the room
                         match room_manager.join_room(&room_name, addr, password.as_deref()).await {
                             Ok(_) => {
-                                let msg = if password.is_some() {
-                                    format!("✓ Room '{}' created (password protected) and joined", room_name)
-                                } else {
-                                    format!("✓ Room '{}' created and joined", room_name)
-                                };
-                                Err(msg)
+                                let msg = ChatMessage::room_joined(room_name, addr);
+                                Ok(Some(msg))
                             },
                             Err(e) => Err(format!("✗ Room created but failed to join: {}", e))
                         }
@@ -162,7 +161,10 @@ impl CommandProcessor {
                     }
                     room_manager.leave_room(&curr_room, &addr).await;
                     match room_manager.join_room("general", addr, None).await {
-                        Ok(_) => Err("✓ Returned to 'general' room".to_string()),
+                        Ok(_) => {
+                            let msg = ChatMessage::room_joined("general".to_string(), addr);
+                            Ok(Some(msg))
+                        }
                         Err(e) => Err(format!("✗ Error returning to general: {}", e)),
                     }
                 } else {
@@ -219,7 +221,8 @@ impl CommandProcessor {
                             users.push(name);
                         }
                     }
-                    Err(format!("Users in {}: {}", room_name, users.join(", ")))
+                    let msg = ChatMessage::user_list(users, room_name);
+                    Ok(Some(msg))
                 } else {
                     Err("You are not in a room".to_string())
                 }
@@ -256,7 +259,7 @@ impl CommandProcessor {
 
             CommandResult::Help => Err(
                 String::from(
-                    "\n\n═══════════════ Available Commands ═══════════════\n\
+                    "\n\n--------------- Available Commands ---------------\n\
                     /nick <name>            - Change your nickname\n\
                     /create <room> [pwd]    - Create a new room\n\
                     /join <room> [pwd]      - Join a room\n\
@@ -267,7 +270,7 @@ impl CommandProcessor {
                     /w <user> <msg>         - Send private message\n\
                     /help                   - Show this help\n\
                     /quit                   - Exit chat\n\
-                    ═══════════════════════════════════════════════════\n\n"
+                    --------------------------------------------------\n\n"
                 )),
 
             CommandResult::InvalidCommand(msg) => Err(format!("✗ {}",msg)),
