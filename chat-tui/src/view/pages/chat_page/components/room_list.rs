@@ -32,37 +32,39 @@ impl<'a> Widget for RoomList<'a> {
     where
         Self: Sized,
     {
-        let border_color = if self.is_focused {
-            Color::Yellow
-        } else {
-            Color::White
-        };
-
-        let items: Vec<ListItem> = self.rooms
+        let items: Vec<ListItem> = self
+            .rooms
             .iter()
             .map(|room| {
-                let is_current = self.current_room == Some(room.as_str());
-                let line = if is_current {
-                    Line::from(vec![
-                        Span::styled("► ", Style::default().fg(Color::Green)),
-                        Span::styled(room, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                    ])
-                } else {
-                    Line::from(vec![
-                        Span::raw("  "),
-                        Span::raw(room),
-                    ])
-                };
-                ListItem::new(line)
-            }).collect();
+                let room_name_clean = room.trim_end_matches("🔒");
+                let has_lock = room.ends_with("🔒");
 
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(border_color))
-                    .title(format!("Rooms ({})", self.rooms.len()))
-            );
-        list.render(area, buf)
+                let is_current = Some(room_name_clean) == self.current_room;
+
+                let style = if is_current {
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+
+                let display_text = if has_lock {
+                    format!("🔒 {}", room_name_clean)
+                } else {
+                    format!("  {}", room_name_clean)
+                };
+
+                ListItem::new(Line::from(Span::styled(display_text, style)))
+            })
+            .collect();
+
+        let list = List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("Rooms ({})", self.rooms.len())),
+        );
+
+        list.render(area, buf);
     }
 }

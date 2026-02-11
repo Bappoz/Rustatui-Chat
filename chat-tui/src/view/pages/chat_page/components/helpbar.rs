@@ -23,28 +23,16 @@ impl<'a> Widget for HelpBar<'a> {
     where
         Self: Sized,
     {
-        let help_text = match self.input_mode {
-            InputMode::Normal => Line::from(vec![
-                Span::styled("i", Style::default().fg(Color::Yellow)),
-                Span::raw(":edit "),
-                Span::styled("n", Style::default().fg(Color::Yellow)),
-                Span::raw(":next room "),
-                Span::styled("p", Style::default().fg(Color::Yellow)),
-                Span::raw(":prev room "),
-                Span::styled("↑↓", Style::default().fg(Color::Yellow)),
-                Span::raw(":scroll "),
-                Span::styled("q", Style::default().fg(Color::Yellow)),
-                Span::raw(":quit"),
-            ]),
-            InputMode::Editing => Line::from(vec![
-                Span::styled("ESC", Style::default().fg(Color::Green)),
-                Span::raw(":exit edit "),
-                Span::styled("ENTER", Style::default().fg(Color::Green)),
-                Span::raw(":send message"),
-            ]),
+        let help_message = match self.input_mode {
+            InputMode::Normal => {
+                "i:edit | n:next room | p:prev room | ↑↓:scroll | q:quit"
+            }
+            InputMode::Editing => {
+                "Esc:normal | Enter:send"
+            }
         };
 
-        let help = Paragraph::new(help_text)
+        let help = Paragraph::new(help_message)
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL).title("Commands"));
 

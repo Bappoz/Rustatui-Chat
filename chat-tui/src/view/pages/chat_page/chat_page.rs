@@ -39,7 +39,11 @@ impl<'a> ChatPage<'a> {
 
     fn render_users(&self, area: Rect, buf: &mut Buffer) {
         let mut all_users = vec![self.state.username.clone()];
-        all_users.extend(self.state.users_in_room.clone());
+        for user in &self.state.users_in_room {
+            if user != &self.state.username {
+                all_users.push(user.clone());
+            }
+        }
         let user_list = UserList::new(&all_users, &self.state.username);
         user_list.render(area, buf);
     }
