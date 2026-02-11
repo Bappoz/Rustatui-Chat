@@ -24,6 +24,12 @@ pub enum Action {
     ChangeRoom(String),
     NextRoom,
     PreviousRoom,
+    UpdateRoomList(Vec<String>),
+    JoinRoom(String),
+    JoinRoomWithPassword(String, String),
+    CreateRoom(String, Option<String>),
+
+    // User list actions
     UpdateUserList(Vec<String>),
 
     // Ui Actions

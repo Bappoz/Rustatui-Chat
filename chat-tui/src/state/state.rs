@@ -66,8 +66,6 @@ impl Default for AppState {
             scroll_offset: 0,
             available_rooms: vec![
                 "general".to_string(),
-                "random".to_string(),
-                "tech".to_string(),
             ],
             current_room: Some("general".to_string()),
             users_in_room: vec![],
@@ -101,32 +99,43 @@ impl AppState {
     }
 
     pub fn change_room(&mut self, room: String) {
-        if self.available_rooms.contains(&room) {
-            self.current_room = Some(room);
-        }
+        self.current_room = Some(room);
+        self.scroll_offset = 0;
     }
 
     pub fn next_room(&mut self) {
-        if let Some(curr) = &self.current_room {
-            if let Some(idx) = self.available_rooms.iter().position(|r| r == curr) {
-                let next_idx = (idx + 1) % self.available_rooms.len();
-                self.current_room = Some(self.available_rooms[next_idx].clone());
-            }
-        } else if !self.available_rooms.is_empty() {
-            self.current_room = Some(self.available_rooms[0].clone());
+        if self.available_rooms.is_empty() {
+            return;
+        }
+
+        let current = self.current_room.as_deref().unwrap_or("general");
+
+        if let Some(idx) = self.available_rooms.iter().position(|r| {
+            r.trim_end_matches("🔒") == current
+        }) {
+            let next_idx = (idx + 1) % self.available_rooms.len();
+            let next_room = self.available_rooms[next_idx].trim_end_matches("🔒").to_string();
+            self.current_room = Some(next_room);
         }
     }
 
     pub fn previous_room(&mut self) {
-        if let Some(curr) = &self.current_room {
-            if let Some(idx) = self.available_rooms.iter().position(|r| r == curr) {
-                let prev_index = if idx == 0 {
-                    self.available_rooms.len() - 1
-                } else {
-                    idx - 1
-                };
-                self.current_room = Some(self.available_rooms[prev_index].clone())
-            }
+        if self.available_rooms.is_empty() {
+            return;
+        }
+
+        let current = self.current_room.as_deref().unwrap_or("general");
+
+        if let Some(idx) = self.available_rooms.iter().position(|r| {
+            r.trim_end_matches("🔒") == current
+        }) {
+            let prev_idx = if idx == 0 {
+                self.available_rooms.len() - 1
+            } else {
+                idx - 1
+            };
+            let prev_room = self.available_rooms[prev_idx].trim_end_matches("🔒").to_string();
+            self.current_room = Some(prev_room);
         }
     }
 
@@ -138,4 +147,8 @@ impl AppState {
         self.scroll_offset = self.scroll_offset.saturating_sub(1)
     }
 
+
+    pub fn get_current_room(&self) -> &str {
+        self.current_room.as_deref().unwrap_or("general")
+    }
 }

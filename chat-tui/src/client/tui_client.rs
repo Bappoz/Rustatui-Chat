@@ -5,6 +5,7 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter}
 };
 use chat_core::message::chat_message::ChatMessage;
+use crate::state::action::Action::{JoinRoom, UpdateRoomList};
 
 pub struct TuiClient {
     writer: Arc<Mutex<BufWriter<tokio::net::tcp::OwnedWriteHalf>>>,
@@ -162,6 +163,34 @@ impl TuiClient {
         if line.is_empty() {
             return Err("Empty line".into());
         }
+
+        // ROOM LIST
+        if line.starts_with("ROOM_LIST|") {
+            let rooms_str = line.strip_prefix("ROOM_LIST|").unwrap_or("");
+            let rooms: Vec<String> = if rooms_str.is_empty() {
+                vec![]
+            } else {
+                rooms_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            };
+
+            // Send action to update room
+            let _ = action_tx.send(UpdateRoomList(rooms));
+            return Err("Room list updated".into())
+        }
+
+        // Join Room
+        if line.starts_with("ROOM_JOINED|") {
+            let room_name = line.strip_prefix("ROOM_JOINED|").unwrap_or("general").trim().to_string();
+
+            //send action to join room
+            let _ = action_tx.send(JoinRoom(room_name));
+            return Err("Room Joined".into())
+        }
+
 
         // USER_LIST|user1,user2,user3
         if line.starts_with("USER_LIST|") {

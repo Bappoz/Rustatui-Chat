@@ -199,6 +199,29 @@ impl App {
                     .filter(|u| u != &self.state.username)
                     .collect();
             },
+            Action::UpdateRoomList(rooms) => {
+                self.state.available_rooms = rooms;
+            },
+            Action::CreateRoom(room_name, password) => {
+                if let Some(client) = &self.state.client {
+                    let command = match password {
+                        Some(pwd) => format!("/create {} {}", room_name, pwd),
+                        None => format!("/create {}", room_name),
+                    };
+                    let _ = client.send_message(&command).await;
+                }
+            },
+
+            Action::JoinRoomWithPassword(room_name, password) => {
+                if let Some(client) = &self.state.client {
+                    let _ = client.send_message(&format!("/join {} {}", room_name, password)).await;
+                }
+            },
+            Action::JoinRoom(room) => {
+                self.state.change_room(room);
+                self.state.messages.clear();
+                self.state.scroll_offset = 0;
+            },
             _ => {}
         }
     }
