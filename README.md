@@ -2,45 +2,9 @@
 
 Chat application with Rust using Ratatui for TUI interface.
 
-## Project Structure
 
-```
-chat-server-rust/
-├── chat-core/          # Server-side logic
-│   └── src/
-│       ├── main.rs     # Server entry point
-│       ├── lib.rs      # Library exports
-│       ├── server/     # Server implementation
-│       ├── client/     # Client management (server-side)
-│       ├── message/    # Message types and processing
-│       └── utils/      # Utilities
-└── chat-tui/           # TUI Client
-    └── src/
-        ├── main.rs     # TUI entry point
-        ├── app.rs      # Application logic
-        ├── client/     # Server connection
-        ├── state/      # Application state
-        ├── view/       # UI components
-        ├── event/      # Event handling
-        └── input/      # Input handling
-```
 
-## 🚀 Quick Start
-
-### Opção 1: Início Automático (Windows)
-
-```batch
-start.bat
-```
-
-Este script vai:
-
-1. Compilar o projeto
-2. Iniciar o servidor em segundo plano
-3. Testar a conexão
-4. Iniciar o cliente TUI
-
-### Opção 2: Início Manual
+### Initializing
 
 #### 1️⃣ Inicie o Servidor
 
@@ -49,14 +13,14 @@ Este script vai:
 cargo run --bin chat-server
 ```
 
-**Você deve ver:**
+**You may see:**
 
 ```
-INFO rusty_chat_server: 🦀 Rusty Chat Server started
-INFO rusty_chat_server: 📡 Listening on 0.0.0.0:4556
+INFO rusty_chat_server:  Rusty Chat Server started
+INFO rusty_chat_server:  Listening on 0.0.0.0:4556
 ```
 
-#### 2️⃣ Inicie o Cliente TUI
+#### After Initialize the TUI client
 
 ```bash
 # Terminal 2 - Cliente
@@ -135,13 +99,13 @@ To see server logs:
 cargo run --bin chat-server 2> server.log
 ```
 
-## ⚠️ Problemas Comuns
+##  Common Problems
 
-### Erro: "Conexão recusada" (10061)
+### Erro: "Connection Refused" (10061)
 
-**Causa:** Servidor não está rodando
+**Cause:** Server not running
 
-**Solução:** Certifique-se de iniciar o servidor ANTES do cliente:
+**Solution:** Try initializing the server (chat-server) first:
 
 ```bash
 # Terminal 1
@@ -151,18 +115,17 @@ cargo run --bin chat-server
 cargo run --bin chat-tui
 ```
 
-### Porta 4556 já em uso
+### Port 4556 already in use
 
-**Solução:** Mate o processo usando a porta:
+**Solution:** Kill the process which is using this port:
 
 ```powershell
 netstat -ano | findstr 4556
 taskkill /F /PID <PID>
 ```
 
-### Ver mais soluções
-
-Consulte [TROUBLESHOOTING.md](TROUBLESHOOTING.md) para guia completo de resolução de problemas.
+### Other problemas
+Try contacting me via github or my social medias and I can try helping you.
 
 ## Architecture
 
