@@ -6,7 +6,7 @@ Chat application with Rust using Ratatui for TUI interface.
 
 ### Initializing
 
-#### 1️⃣ Inicie o Servidor
+#### Inicie o Servidor
 
 ```bash
 # Terminal 1 - Servidor
